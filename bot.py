@@ -5,7 +5,8 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 # CSV load
 df = pd.read_csv("pincode_data.csv")
 
-BOT_TOKEN = "8275640195:AAH8dia7edaJQmMOVdc93Ml0vmboqE_u6Iw"
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -41,3 +42,4 @@ app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_pincode))
 
 app.run_polling()
+

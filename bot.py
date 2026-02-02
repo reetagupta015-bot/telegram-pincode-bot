@@ -3,13 +3,20 @@ import pandas as pd
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-df = pd.read_csv("pincode_data.csv")
+# Load CSV as STRING (IMPORTANT)
+df = pd.read_csv("pincode_data.csv", dtype=str)
 
-# Clean columns
+# Clean column names
 df.columns = df.columns.str.strip().str.lower()
 
-# IMPORTANT: pincode as STRING
-df['external_code'] = df['external_code'].astype(str).str.strip()
+# Clean pincode
+df['external_code'] = df['external_code'].str.strip()
+
+# Clean delivery column
+df['ntb urban'] = df['ntb urban'].str.strip().str.upper()
+
+# Clean area column
+df['master_pincodes_name'] = df['master_pincodes_name'].str.strip()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
@@ -30,13 +37,19 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     else:
         row = result.iloc[0]
 
+        area = row['master_pincodes_name']
+        city = row['city']
+        state = row['state']
+
         delivery = "✅ Delivery Available" if row['ntb urban'] == 'Y' else "❌ Delivery Not Available"
 
         reply = f"""
 ✅ *PIN Code Found*
 
-📍 City: {row['city']}
-🗺 State: {row['state']}
+📮 PIN Code: {pin}
+📍 Area: {area}
+🏙 City: {city}
+🗺 State: {state}
 📦 Delivery: {delivery}
 """
         await update.message.reply_text(reply, parse_mode="Markdown")

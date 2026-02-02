@@ -4,9 +4,9 @@ from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 # ===============================
-# LOAD CSV (ALL AS STRING)
+# LOAD CLEAN CSV (ALL AS STRING)
 # ===============================
-df = pd.read_csv("pincode_data.csv", dtype=str)
+df = pd.read_csv("pincode_clean.csv", dtype=str)
 
 # ===============================
 # CLEAN COLUMN NAMES
@@ -60,7 +60,6 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ PIN code not found")
         return
 
-    # Take first record (city/state same for all areas)
     row = result.iloc[0]
 
     # DELIVERY STATUS
@@ -81,7 +80,6 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🗺 *State:* {row['state']}
 📦 *Delivery:* {delivery}
 """
-
     await update.message.reply_text(reply, parse_mode="Markdown")
 
 # ===============================

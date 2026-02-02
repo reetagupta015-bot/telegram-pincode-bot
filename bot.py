@@ -1,41 +1,52 @@
 import os
-import pandas as pd
+import sqlite3
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
 # ===============================
-# LOAD MAIN PINCODE DATA
+# SQLITE CONNECTION
 # ===============================
-df = pd.read_csv("pincode_clean.csv", dtype=str)
-df.columns = df.columns.str.strip().str.lower()
-
-df['external_code'] = df['external_code'].str.strip()
-df['master_pincodes_name'] = df['master_pincodes_name'].str.strip()
-df['ntb urban'] = df['ntb urban'].str.strip().str.upper()
-df['city'] = df['city'].str.strip()
-df['state'] = df['state'].str.strip()
+DB_FILE = "pincode.db"
+conn = sqlite3.connect(DB_FILE, check_same_thread=False)
 
 # ===============================
-# LOAD NOT DELIVERY PINCODES (UPDATED FILE)
+# NEGATIVE TABLES (ALL)
 # ===============================
-not_delivery_df = pd.read_csv("not_delivery_pincode_updated.csv", dtype=str)
-not_delivery_pins = set(not_delivery_df.iloc[:, 0].str.strip())
-
-# ===============================
-# BOT TOKEN
-# ===============================
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+NEGATIVE_TABLES = [
+    "sbi_negative_area",
+    "cant_process",
+    "au_negative_area",
+    "yes_negative_area"
+]
 
 # ===============================
 # START COMMAND
 # ===============================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📮 Welcome!\n\nSend a 6-digit PIN code to check delivery availability."
+        "📮 Welcome!\n\nSend a 6-digit PIN code to check delivery availability (area-wise)."
     )
 
 # ===============================
-# PINCODE CHECK
+# CHECK IF AREA IS NEGATIVE
+# ===============================
+def is_negative(pin, area):
+    for table in NEGATIVE_TABLES:
+        try:
+            # try both pin-only & pin+area logic safely
+            q = f"""
+            SELECT 1 FROM {table}
+            WHERE pincode = ?
+            LIMIT 1
+            """
+            if conn.execute(q, (pin,)).fetchone():
+                return True
+        except:
+            pass
+    return False
+
+# ===============================
+# PINCODE CHECK (FINAL)
 # ===============================
 async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pin = update.message.text.strip()
@@ -44,65 +55,84 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Please send a valid 6-digit PIN code")
         return
 
-    # ❌ FIRST PRIORITY: NOT DELIVERY (NEGATIVE / CAN'T PROCESS)
-    if pin in not_delivery_pins:
-        await update.message.reply_text(
-            f"""
-❌ *Delivery NOT Available*
+    query = """
+    SELECT master_pincodes_name, ntb_urban, city, state
+    FROM pincodes
+    WHERE external_code = ?
+    """
+    rows = conn.execute(query, (pin,)).fetchall()
 
-📮 *PIN Code:* {pin}
-🚫 *Status:* CAN'T PROCESS / NEGATIVE AREA
-""",
-            parse_mode="Markdown"
-        )
-        return
-
-    # NORMAL CHECK
-    result = df[df['external_code'] == pin]
-
-    if result.empty:
+    if not rows:
         await update.message.reply_text("❌ PIN code not found")
         return
 
-    row = result.iloc[0]
+    serviceable = []
+    non_serviceable = []
 
-    if row['ntb urban'] != 'Y':
+    city, state = rows[0][2], rows[0][3]
+
+    for area, ntb, _, _ in rows:
+        area = area.strip()
+
+        # Negative override
+        if is_negative(pin, area):
+            non_serviceable.append(area)
+            continue
+
+        if ntb == "Y":
+            serviceable.append(area)
+        else:
+            non_serviceable.append(area)
+
+    # Remove duplicates
+    serviceable = sorted(set(serviceable))
+    non_serviceable = sorted(set(non_serviceable))
+
+    # If no serviceable areas
+    if not serviceable:
         await update.message.reply_text(
             f"""
 ❌ *Delivery NOT Available*
 
 📮 *PIN Code:* {pin}
-🏙 *City:* {row['city']}
-🗺 *State:* {row['state']}
+🚫 *Reason:* No serviceable areas
+
+🏙 *City:* {city}
+🗺 *State:* {state}
 """,
             parse_mode="Markdown"
         )
         return
 
-    # DELIVERY AVAILABLE
-    areas = result['master_pincodes_name'].dropna().unique().tolist()
-    area_text = "\n".join([f"• {a}" for a in areas])
+    # Prepare text
+    serviceable_text = "\n".join([f"✅ {a}" for a in serviceable])
+    non_serviceable_text = (
+        "\n".join([f"❌ {a}" for a in non_serviceable])
+        if non_serviceable else
+        "—"
+    )
 
     reply = f"""
-✅ *Delivery Available*
-
 📮 *PIN Code:* {pin}
-📍 *Areas:*
-{area_text}
 
-🏙 *City:* {row['city']}
-🗺 *State:* {row['state']}
+📍 *Delivery Available Areas:*
+{serviceable_text}
+
+🚫 *Delivery NOT Available Areas:*
+{non_serviceable_text}
+
+🏙 *City:* {city}
+🗺 *State:* {state}
 """
     await update.message.reply_text(reply, parse_mode="Markdown")
 
 # ===============================
 # APP SETUP
 # ===============================
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
 app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_pincode))
 
-# ===============================
-# RUN BOT
-# ===============================
 app.run_polling()

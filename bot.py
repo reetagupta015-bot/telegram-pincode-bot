@@ -3,37 +3,35 @@ import pandas as pd
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-# CSV load
 df = pd.read_csv("pincode_data.csv")
 
-# Token from Render Environment Variable
+# Clean column names
+df.columns = df.columns.str.strip().str.lower()
+
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📮 Welcome!\n\nSend me any PIN code (e.g. 360001) and I’ll give details."
-    )
+    await update.message.reply_text("📮 Send PIN code")
 
 async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pin = update.message.text.strip()
 
     if not pin.isdigit():
-        await update.message.reply_text("❌ Please send a valid PIN code.")
+        await update.message.reply_text("❌ Invalid PIN")
         return
 
-    result = df[df['Pincode'] == int(pin)]
+    result = df[df['pincode'] == int(pin)]
 
     if result.empty:
-        await update.message.reply_text("❌ PIN code not found.")
+        await update.message.reply_text("❌ PIN not found")
     else:
         row = result.iloc[0]
         reply = f"""
 ✅ *PIN Code Found*
 
-📍 City: {row['City']}
-🏙 District: {row['District']}
-🗺 State: {row['State']}
-📦 Delivery: Yes
+📍 City: {row['city']}
+🏙 District: {row['district']}
+🗺 State: {row['state']}
 """
         await update.message.reply_text(reply, parse_mode="Markdown")
 

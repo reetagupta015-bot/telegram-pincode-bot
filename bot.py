@@ -16,9 +16,9 @@ df['city'] = df['city'].str.strip()
 df['state'] = df['state'].str.strip()
 
 # ===============================
-# LOAD NOT DELIVERY PINCODES
+# LOAD NOT DELIVERY PINCODES (UPDATED FILE)
 # ===============================
-not_delivery_df = pd.read_csv("not_delivery_pincode.csv", dtype=str)
+not_delivery_df = pd.read_csv("not_delivery_pincode_updated.csv", dtype=str)
 not_delivery_pins = set(not_delivery_df.iloc[:, 0].str.strip())
 
 # ===============================
@@ -44,7 +44,7 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Please send a valid 6-digit PIN code")
         return
 
-    # ❌ FIRST PRIORITY: NOT DELIVERY
+    # ❌ FIRST PRIORITY: NOT DELIVERY (NEGATIVE / CAN'T PROCESS)
     if pin in not_delivery_pins:
         await update.message.reply_text(
             f"""

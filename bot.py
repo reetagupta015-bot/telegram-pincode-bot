@@ -10,7 +10,7 @@ DB_FILE = "pincode.db"
 conn = sqlite3.connect(DB_FILE, check_same_thread=False)
 
 # ===============================
-# NEGATIVE TABLES (ALL)
+# NEGATIVE TABLES
 # ===============================
 NEGATIVE_TABLES = [
     "sbi_negative_area",
@@ -24,29 +24,24 @@ NEGATIVE_TABLES = [
 # ===============================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        "📮 Welcome!\n\nSend a 6-digit PIN code to check delivery availability (area-wise)."
+        "📮 Welcome!\n\nSend a 6-digit PIN code to check delivery (area-wise)."
     )
 
 # ===============================
-# CHECK IF AREA IS NEGATIVE
+# CHECK NEGATIVE AREA
 # ===============================
 def is_negative(pin, area):
     for table in NEGATIVE_TABLES:
         try:
-            # try both pin-only & pin+area logic safely
-            q = f"""
-            SELECT 1 FROM {table}
-            WHERE pincode = ?
-            LIMIT 1
-            """
+            q = f"SELECT 1 FROM {table} WHERE pincode=? LIMIT 1"
             if conn.execute(q, (pin,)).fetchone():
                 return True
         except:
-            pass
+            continue
     return False
 
 # ===============================
-# PINCODE CHECK (FINAL)
+# PINCODE CHECK
 # ===============================
 async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pin = update.message.text.strip()
@@ -58,7 +53,7 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = """
     SELECT master_pincodes_name, ntb_urban, city, state
     FROM pincodes
-    WHERE external_code = ?
+    WHERE external_code=?
     """
     rows = conn.execute(query, (pin,)).fetchall()
 
@@ -74,28 +69,23 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for area, ntb, _, _ in rows:
         area = area.strip()
 
-        # Negative override
         if is_negative(pin, area):
             non_serviceable.append(area)
-            continue
-
-        if ntb == "Y":
+        elif ntb == "Y":
             serviceable.append(area)
         else:
             non_serviceable.append(area)
 
-    # Remove duplicates
     serviceable = sorted(set(serviceable))
     non_serviceable = sorted(set(non_serviceable))
 
-    # If no serviceable areas
     if not serviceable:
         await update.message.reply_text(
             f"""
 ❌ *Delivery NOT Available*
 
 📮 *PIN Code:* {pin}
-🚫 *Reason:* No serviceable areas
+🚫 *Reason:* All areas are non-serviceable
 
 🏙 *City:* {city}
 🗺 *State:* {state}
@@ -104,22 +94,14 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # Prepare text
-    serviceable_text = "\n".join([f"✅ {a}" for a in serviceable])
-    non_serviceable_text = (
-        "\n".join([f"❌ {a}" for a in non_serviceable])
-        if non_serviceable else
-        "—"
-    )
-
     reply = f"""
 📮 *PIN Code:* {pin}
 
 📍 *Delivery Available Areas:*
-{serviceable_text}
+{chr(10).join('✅ ' + a for a in serviceable)}
 
 🚫 *Delivery NOT Available Areas:*
-{non_serviceable_text}
+{chr(10).join('❌ ' + a for a in non_serviceable) if non_serviceable else '—'}
 
 🏙 *City:* {city}
 🗺 *State:* {state}
@@ -127,7 +109,7 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(reply, parse_mode="Markdown")
 
 # ===============================
-# APP SETUP
+# APP SETUP (NO UPDATER ❌)
 # ===============================
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
@@ -135,4 +117,5 @@ app = ApplicationBuilder().token(BOT_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_pincode))
 
+print("🤖 Bot started successfully...")
 app.run_polling()

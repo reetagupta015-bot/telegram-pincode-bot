@@ -38,7 +38,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ===============================
 # CHECK NEGATIVE AREA (PIN + AREA)
 # ===============================
-def is_negative(pin, area):
+def is_negative(pin: str, area: str) -> bool:
     if not area:
         return True
 
@@ -82,58 +82,4 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     serviceable = []
     non_serviceable = []
 
-    city, state = rows[0][2], rows[0][3]
-
-    for area, ntb, _, _ in rows:
-        area = (area or "").strip()
-
-        if is_negative(pin, area):
-            non_serviceable.append(area)
-        elif ntb == "Y":
-            serviceable.append(area)
-        else:
-            non_serviceable.append(area)
-
-    serviceable = sorted(set(serviceable))
-    non_serviceable = sorted(set(non_serviceable))
-
-    if not serviceable:
-        await update.message.reply_text(
-            f"""
-❌ *Delivery NOT Available*
-
-📮 *PIN Code:* {pin}
-🚫 *Reason:* All areas are non-serviceable
-
-🏙 *City:* {city}
-🗺 *State:* {state}
-""",
-            parse_mode="Markdown"
-        )
-        return
-
-    reply = f"""
-📮 *PIN Code:* {pin}
-
-📍 *Delivery Available Areas:*
-{chr(10).join('✅ ' + a for a in serviceable)}
-
-🚫 *Delivery NOT Available Areas:*
-{chr(10).join('❌ ' + a for a in non_serviceable) if non_serviceable else '—'}
-
-🏙 *City:* {city}
-🗺 *State:* {state}
-"""
-    await update.message.reply_text(reply, parse_mode="Markdown")
-
-# ===============================
-# APP SETUP (v20 SAFE ✅)
-# ===============================
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-
-app = ApplicationBuilder().token(BOT_TOKEN).build()
-app.add_handler(CommandHandler("start", start))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_pincode))
-
-print("🤖 Bot started successfully...")
-app.run_polling()
+    city

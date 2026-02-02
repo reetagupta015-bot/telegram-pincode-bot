@@ -16,16 +16,9 @@ df.columns = df.columns.str.strip().str.lower()
 # ===============================
 # CLEAN IMPORTANT COLUMNS
 # ===============================
-# PINCODE
 df['external_code'] = df['external_code'].str.strip()
-
-# AREA / POST OFFICE NAME
 df['master_pincodes_name'] = df['master_pincodes_name'].str.strip()
-
-# DELIVERY FLAG
 df['ntb urban'] = df['ntb urban'].str.strip().str.upper()
-
-# CITY / STATE
 df['city'] = df['city'].str.strip()
 df['state'] = df['state'].str.strip()
 
@@ -53,7 +46,6 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Please send a valid 6-digit PIN code")
         return
 
-    # Search PINCODE (STRING MATCH)
     result = df[df['external_code'] == pin]
 
     if result.empty:
@@ -63,13 +55,16 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     row = result.iloc[0]
 
     # DELIVERY STATUS
-    delivery = "✅ Delivery Available" if row['ntb urban'] == 'Y' else "❌ Delivery Not Available"
+    is_delivery = row['ntb urban'] == 'Y'
 
-    # ALL AREAS FOR THIS PIN
-    areas = result['master_pincodes_name'].dropna().unique().tolist()
-    area_text = "\n".join([f"• {a}" for a in areas])
+    if is_delivery:
+        delivery_text = "✅ Delivery Available"
 
-    reply = f"""
+        # Show areas only if delivery is available
+        areas = result['master_pincodes_name'].dropna().unique().tolist()
+        area_text = "\n".join([f"• {a}" for a in areas])
+
+        reply = f"""
 ✅ *PIN Code Found*
 
 📮 *PIN Code:* {pin}
@@ -78,8 +73,20 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 🏙 *City:* {row['city']}
 🗺 *State:* {row['state']}
-📦 *Delivery:* {delivery}
+📦 *Delivery:* {delivery_text}
 """
+    else:
+        delivery_text = "❌ Delivery NOT Available (Service not supported in this area)"
+
+        reply = f"""
+⚠️ *PIN Code Found*
+
+📮 *PIN Code:* {pin}
+🏙 *City:* {row['city']}
+🗺 *State:* {row['state']}
+📦 *Delivery:* {delivery_text}
+"""
+
     await update.message.reply_text(reply, parse_mode="Markdown")
 
 # ===============================

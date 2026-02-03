@@ -5,7 +5,6 @@ from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, Con
 
 DB_FILE = "pincode.db"
 conn = sqlite3.connect(DB_FILE, check_same_thread=False)
-cursor = conn.cursor()
 
 NEGATIVE_TABLES = [
     "sbi_negative_area",
@@ -19,17 +18,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📮 Welcome!\n\nSend a 6-digit PIN code to check delivery (area-wise)."
     )
 
-def is_negative(pin, area):
+def is_negative(pin: str, area: str) -> bool:
+    if not area:
+        return True
+
+    cur = conn.cursor()
     for table in NEGATIVE_TABLES:
         try:
-            cursor.execute(
-                f"SELECT 1 FROM {table} WHERE pincode=? AND LOWER(area_name)=LOWER(?) LIMIT 1",
+            cur.execute(
+                f"""
+                SELECT 1 FROM {table}
+                WHERE pincode = ?
+                AND LOWER(area_name) = LOWER(?)
+                LIMIT 1
+                """,
                 (pin, area)
             )
-            if cursor.fetchone():
+            if cur.fetchone():
                 return True
-        except:
-            pass
+        except Exception:
+            continue
     return False
 
 async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -39,8 +47,13 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Invalid PIN code")
         return
 
-    rows = cursor.execute(
-        "SELECT master_pincodes_name, ntb_urban, city, state FROM pincodes WHERE external_code=?",
+    cur = conn.cursor()
+    rows = cur.execute(
+        """
+        SELECT master_pincodes_name, ntb_urban, city, state
+        FROM pincodes
+        WHERE external_code = ?
+        """,
         (pin,)
     ).fetchall()
 
@@ -59,25 +72,29 @@ async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
             serviceable.append(area)
 
     reply = f"""
-📮 PIN Code: {pin}
+📮 *PIN Code:* {pin}
 
-✅ Delivery Available:
-{chr(10).join("• "+a for a in sorted(set(serviceable))) or "—"}
+✅ *Delivery Available Areas:*
+{chr(10).join("• " + a for a in sorted(set(serviceable))) or "—"}
 
-❌ Not Available:
-{chr(10).join("• "+a for a in sorted(set(non_serviceable))) or "—"}
+❌ *Delivery NOT Available Areas:*
+{chr(10).join("• " + a for a in sorted(set(non_serviceable))) or "—"}
 
-🏙 City: {city}
-🗺 State: {state}
+🏙 *City:* {city}
+🗺 *State:* {state}
 """
-    await update.message.reply_text(reply)
+    await update.message.reply_text(reply, parse_mode="Markdown")
 
 def main():
     token = os.environ.get("BOT_TOKEN")
+    if not token:
+        raise RuntimeError("BOT_TOKEN environment variable not set")
+
     app = ApplicationBuilder().token(token).build()
     app.add_handler(CommandHandler("start", start))
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_pincode))
-    print("🤖 Bot started")
+
+    print("🤖 Bot started successfully")
     app.run_polling()
 
 if __name__ == "__main__":

@@ -7,146 +7,130 @@ DB_FILE = "pincode.db"
 conn = sqlite3.connect(DB_FILE, check_same_thread=False)
 
 
-# ---------------- START COMMAND ----------------
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "📮 Send a 6-digit PIN code to check SBI & Delivery availability"
-    )
+# ---------------- SBI PIN ----------------
+def get_sbi_pin(pin):
+    cur = conn.cursor()
+
+    return cur.execute(
+        """
+        SELECT city, state
+        FROM sbi_pin_code
+        WHERE pin_code = ?
+        LIMIT 1
+        """,
+        (pin,)
+    ).fetchone()
 
 
-# ---------------- SBI NEGATIVE AREAS ----------------
+# ---------------- SBI NEGATIVE ----------------
 def get_sbi_negative(pin):
     cur = conn.cursor()
 
-    try:
-        rows = cur.execute("""
-            SELECT negative_area
-            FROM sbi_negative_area
-            WHERE pin_code = ?
-        """, (pin,)).fetchall()
+    rows = cur.execute(
+        """
+        SELECT
+        COALESCE(area_name, negative_area_policy_mmi)
+        FROM sbi_negative_area
+        WHERE pin_code = ?
+        """,
+        (pin,)
+    ).fetchall()
 
-        return [r[0] for r in rows if r[0]]
-
-    except:
-        return []
+    return [r[0] for r in rows if r[0]]
 
 
-# ---------------- SBI PIN DATA ----------------
-def get_sbi_pin_data(pin):
+# ---------------- CANT PROCESS ----------------
+def is_cant_process(pin):
     cur = conn.cursor()
 
-    try:
-        row = cur.execute("""
-            SELECT city, state
-            FROM sbi_pin_code
-            WHERE pin_code = ?
-            LIMIT 1
-        """, (pin,)).fetchone()
+    row = cur.execute(
+        """
+        SELECT 1
+        FROM cant_process
+        WHERE pin_code = ?
+        LIMIT 1
+        """,
+        (pin,)
+    ).fetchone()
 
-        return row
-    except:
-        return None
-
-
-# ---------------- DELIVERY (IDFC / NTB) ----------------
-def get_delivery_data(pin):
-    cur = conn.cursor()
-
-    try:
-        row = cur.execute("""
-            SELECT city, state, ntb_urban
-            FROM idfc
-            WHERE external_code = ?
-            LIMIT 1
-        """, (pin,)).fetchone()
-
-        return row
-    except:
-        return None
+    return bool(row)
 
 
-# ---------------- MAIN PIN CHECK ----------------
-async def check_pincode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ---------------- BOT MAIN ----------------
+async def check_pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     pin = update.message.text.strip()
 
     if not pin.isdigit() or len(pin) != 6:
-        await update.message.reply_text("❌ Invalid PIN Code")
+        await update.message.reply_text("❌ Invalid PIN")
         return
 
 
-    # ===== SBI CHECK =====
-    sbi_data = get_sbi_pin_data(pin)
-    sbi_negative = get_sbi_negative(pin)
+    # SBI PIN
+    sbi = get_sbi_pin(pin)
 
-    # ===== DELIVERY CHECK =====
-    delivery_data = get_delivery_data(pin)
+    # SBI NEGATIVE
+    negative = get_sbi_negative(pin)
+
+    # CANT PROCESS
+    cant = is_cant_process(pin)
 
 
-    # ---------- SBI RESULT ----------
-    if sbi_data:
-        sbi_city, sbi_state = sbi_data
-        sbi_status = "✅ Available"
+    msg = f"📮 PIN Code: {pin}\n\n"
+
+
+    # -------- SBI RESULT --------
+    if sbi:
+        msg += "🏦 SBI\n"
+        msg += "Status: ✅ Available\n"
+        msg += f"City: {sbi[0]}\n"
+        msg += f"State: {sbi[1]}\n\n"
     else:
-        sbi_city, sbi_state = "—", "—"
-        sbi_status = "❌ Not Available"
+        msg += "🏦 SBI\n"
+        msg += "Status: ❌ Not Available\n\n"
 
 
-    # ---------- DELIVERY RESULT ----------
-    if delivery_data:
-        del_city, del_state, ntb = delivery_data
+    # -------- NEGATIVE AREAS --------
+    msg += "❌ SBI Negative Areas:\n"
 
-        if ntb == "Y":
-            delivery_status = "✅ Serviceable (PIN level)"
-        else:
-            delivery_status = "❌ Not Serviceable"
+    if negative:
+        for a in sorted(set(negative)):
+            msg += f"• {a}\n"
     else:
-        del_city, del_state = "—", "—"
-        delivery_status = "❌ No Data"
+        msg += "—\n"
 
 
-    # ---------- FORMAT NEGATIVE AREAS ----------
-    if sbi_negative:
-        negative_text = "\n".join(f"• {area}" for area in sorted(set(sbi_negative)))
+    # -------- CANT PROCESS --------
+    msg += "\n⚠ Cant Process Status:\n"
+
+    if cant:
+        msg += "❌ This PIN is marked as CANT PROCESS"
     else:
-        negative_text = "—"
+        msg += "✅ This PIN is allowed"
 
 
-    # ---------- FINAL MESSAGE ----------
-    reply = f"""
-📮 PIN Code: {pin}
+    await update.message.reply_text(msg)
 
-🏦 SBI
-Status: {sbi_status}
-City: {sbi_city}
-State: {sbi_state}
 
-❌ SBI Negative Areas:
-{negative_text}
-
-🚚 Delivery Status
-{delivery_status}
-
-City: {del_city}
-State: {del_state}
-"""
-
-    await update.message.reply_text(reply)
+# ---------------- START ----------------
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Send 6 digit PIN code")
 
 
 # ---------------- MAIN ----------------
 def main():
 
     token = os.environ.get("BOT_TOKEN")
+
     if not token:
         raise RuntimeError("BOT_TOKEN not set")
 
     app = ApplicationBuilder().token(token).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_pincode))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, check_pin))
 
-    print("🤖 Bot started successfully")
+    print("🤖 SBI Checker Running")
     app.run_polling()
 
 

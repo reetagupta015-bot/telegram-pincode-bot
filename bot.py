@@ -3,7 +3,8 @@ import sqlite3
 from telegram import Update
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, ContextTypes, filters
 
-DB_FILE = "pincode.db"
+
+DB_FILE = "pincode_final.db"
 conn = sqlite3.connect(DB_FILE, check_same_thread=False)
 
 
@@ -28,8 +29,7 @@ def get_sbi_negative(pin):
 
     rows = cur.execute(
         """
-        SELECT
-        COALESCE(area_name, negative_area_policy_mmi)
+        SELECT area_name
         FROM sbi_negative_area
         WHERE pin_code = ?
         """,
@@ -46,7 +46,7 @@ def is_cant_process(pin):
     row = cur.execute(
         """
         SELECT 1
-        FROM cant_process
+        FROM s8
         WHERE pin_code = ?
         LIMIT 1
         """,
@@ -66,13 +66,8 @@ async def check_pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
 
-    # SBI PIN
     sbi = get_sbi_pin(pin)
-
-    # SBI NEGATIVE
     negative = get_sbi_negative(pin)
-
-    # CANT PROCESS
     cant = is_cant_process(pin)
 
 
@@ -82,7 +77,6 @@ async def check_pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # -------- SBI RESULT --------
     if sbi:
         msg += "🏦 SBI\n"
-        msg += "Status: ✅ Available\n"
         msg += f"City: {sbi[0]}\n"
         msg += f"State: {sbi[1]}\n\n"
     else:
@@ -90,12 +84,23 @@ async def check_pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
         msg += "Status: ❌ Not Available\n\n"
 
 
+    # -------- DELIVERY DECISION --------
+    if not sbi:
+        delivery_status = "❌ Not Deliverable"
+    elif negative or cant:
+        delivery_status = "⚠ Risk / Possibly Not Deliverable"
+    else:
+        delivery_status = "✅ Deliverable"
+
+    msg += f"🚚 Delivery Status: {delivery_status}\n\n"
+
+
     # -------- NEGATIVE AREAS --------
     msg += "❌ SBI Negative Areas:\n"
 
     if negative:
-        for a in sorted(set(negative)):
-            msg += f"• {a}\n"
+        for area in sorted(set(negative)):
+            msg += f"• {area}\n"
     else:
         msg += "—\n"
 
@@ -114,7 +119,7 @@ async def check_pin(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ---------------- START ----------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Send 6 digit PIN code")
+    await update.message.reply_text("📮 Send 6 digit PIN code")
 
 
 # ---------------- MAIN ----------------
